@@ -2,6 +2,7 @@ import os, bpy
 import bmesh
 import numpy as np
 from mathutils import Vector, kdtree
+import time
 
 from . blenderInit import blenderInit
 from . readMesh import readMesh
@@ -94,6 +95,11 @@ def set_hair_shader(obj):
     else:
         obj.data.materials.append(mat)
 
+def print_elapsed(start, msg):
+    end = time.time()
+    elapsed_time = end - start
+    print(msg, ":", elapsed_time)
+
 def render_mesh_default(args):
   ## initialize blender
   imgRes_x = args["image_resolution"][0]
@@ -107,6 +113,9 @@ def render_mesh_default(args):
   location = args["mesh_position"]
   rotation = args["mesh_rotation"]
   scale = args["mesh_scale"]
+  head_path = args["head_path"]
+  head_mesh = readMesh(head_path, args["head_position"], args["head_rotation"], args["head_scale"])
+
   if "mesh_path" in args:
     meshPath = args["mesh_path"]
     mesh = readMesh(meshPath, location, rotation, scale)
@@ -117,25 +126,39 @@ def render_mesh_default(args):
   else:
     raise ValueError("one should provide either [mesh_path] or [verticesfaces] in the args")   
 
+  start = time.time()
   # Set shading to smooth
-  mesh.data.use_auto_smooth = True
-  # Set the angle threshold for auto-smooth
-  mesh.data.auto_smooth_angle = 60.0
+  # mesh.data.use_auto_smooth = True
+  # # Set the angle threshold for auto-smooth
+  # mesh.data.auto_smooth_angle = 60.0
+  #
+  # head_mesh.data.use_auto_smooth = True
+  # head_mesh.data.auto_smooth_angle = 60.0
+  #
   bpy.ops.object.shade_smooth() 
+  print_elapsed(start, "Smooth")
 
   ## Merging
-  merge_close_vertices(mesh, 0.005)
+  start = time.time()
+  # merge_close_vertices(mesh, 0.005)
+  print_elapsed(start, "Merge")
 
   ## Hair shader
+  start = time.time()
   set_hair_shader(mesh)
+  print_elapsed(start, "Shade")
 
   ## subdivision
+  start = time.time()
   subdivision(mesh, level = args["subdivision_iteration"])
+  subdivision(head_mesh, level = args["subdivision_iteration"])
+  print_elapsed(start, "Subdivision")
 
   ## set invisible plane (shadow catcher)
   # invisibleGround(shadowBrightness=0.9)
 
   ## set camera 
+  start = time.time()
   camLocation = (3, 0, 2)
   lookAtLocation = (0,0,0.5)
   focalLength = 45 # (UI: click camera > Object Data > Focal Length)
@@ -147,14 +170,26 @@ def render_mesh_default(args):
   shadowSoftness = 0.3
   sun = setLight_sun(lightAngle, strength, shadowSoftness)
 
+  ## default render as plastic
+  RGB = args["mesh_RGB"]
+  RGBA = (RGB[0], RGB[1], RGB[2], 1)
+  meshColor = colorObj(RGBA, 0.5, 1.0, 1.0, 0.0, 2.0)
+  setMat_plastic(head_mesh, meshColor)
+
   ## set ambient light
   setLight_ambient(color=(0.1,0.1,0.1,1)) 
 
   ## set gray shadow to completely white with a threshold (optional but recommended)
   shadowThreshold(alphaThreshold = 0.05, interpolationMode = 'CARDINAL')
 
+  print_elapsed(start, "Set camera, light, and shadow")
+
   ## save blender file so that you can adjust parameters in the UI
+  start = time.time()
   bpy.ops.wm.save_mainfile(filepath=os.getcwd() + '/test.blend')
+  print_elapsed(start, "Save blender file")
 
   ## save rendering
+  start = time.time()
   renderImage(args["output_path"], cam)
+  print_elapsed(start, "Render image")
