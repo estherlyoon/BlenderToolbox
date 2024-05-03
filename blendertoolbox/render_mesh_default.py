@@ -1,5 +1,7 @@
 import os, bpy
+import bmesh
 import numpy as np
+from mathutils import Vector, kdtree
 
 from . blenderInit import blenderInit
 from . readMesh import readMesh
@@ -24,6 +26,74 @@ class colorObj(object):
         self.B = B # birghtness
         self.C = C # contrast
 
+def merge_close_vertices(obj, threshold=0.01):
+    """
+    Merge vertices that are closer than the specified threshold.
+
+    Parameters:
+    obj (bpy.types.Object): The mesh object to work on.
+    threshold (float): The distance within which to merge vertices.
+    """
+
+    if obj.type != 'MESH':
+        raise ValueError("Provided object is not a mesh")
+
+    bpy.context.view_layer.objects.active = obj
+    bpy.ops.object.mode_set(mode='EDIT')
+
+    bm = bmesh.from_edit_mesh(obj.data)
+    bm.verts.ensure_lookup_table()
+
+    # Build KDTree
+    kd = kdtree.KDTree(len(bm.verts))
+    for i, v in enumerate(bm.verts):
+        kd.insert(v.co, i)
+    kd.balance()
+
+    # Collect groups of close vertices
+    merge_groups = []
+    processed = set()
+    for v in bm.verts:
+        if v.index not in processed:
+            close_indices = set(idx for co, idx, dist in kd.find_range(v.co, threshold) if idx != v.index)
+            close_indices.add(v.index)
+            processed.update(close_indices)
+            if len(close_indices) > 1:
+                merge_groups.append([bm.verts[i] for i in close_indices])
+
+    # Merge groups of vertices
+    for group in merge_groups:
+        if all(v.is_valid for v in group):
+            # Calculate center point of the group
+            center = sum((v.co for v in group), Vector()) / len(group)
+            # print("merging nPoint:", len(group))
+            bmesh.ops.pointmerge(bm, verts=group, merge_co=center)
+
+    bm.normal_update()
+    bmesh.update_edit_mesh(obj.data)
+    bpy.ops.object.mode_set(mode='OBJECT')
+
+def set_hair_shader(obj):
+    bpy.context.view_layer.objects.active = obj
+
+    mat = bpy.data.materials.new(name="HairMaterial")
+    mat.use_nodes = True
+    for node in mat.node_tree.nodes:
+        if node.type != 'OUTPUT_MATERIAL':
+            mat.node_tree.nodes.remove(node)
+        else:
+            print("not removing output material node")
+
+    shader_node = mat.node_tree.nodes.new('ShaderNodeBsdfHairPrincipled')
+
+    output_node = mat.node_tree.nodes.get('Material Output')
+    mat.node_tree.links.new(shader_node.outputs['BSDF'], output_node.inputs['Surface'])
+
+    if obj.data.materials:
+        obj.data.materials[0] = mat
+    else:
+        obj.data.materials.append(mat)
+
 def render_mesh_default(args):
   ## initialize blender
   imgRes_x = args["image_resolution"][0]
@@ -47,25 +117,23 @@ def render_mesh_default(args):
   else:
     raise ValueError("one should provide either [mesh_path] or [verticesfaces] in the args")   
 
-  ## set shading (uncomment one of them)
-  if args["shading"] == "smooth":
-    bpy.ops.object.shade_smooth() 
-  elif args["shading"] == "flat":
-    bpy.ops.object.shade_flat() 
-  else:
-    raise ValueError("shading should be either flat or smooth in lazy pipeline")
+  # Set shading to smooth
+  mesh.data.use_auto_smooth = True
+  # Set the angle threshold for auto-smooth
+  mesh.data.auto_smooth_angle = 60.0
+  bpy.ops.object.shade_smooth() 
+
+  ## Merging
+  merge_close_vertices(mesh, 0.005)
+
+  ## Hair shader
+  set_hair_shader(mesh)
 
   ## subdivision
   subdivision(mesh, level = args["subdivision_iteration"])
 
-  ## default render as plastic
-  RGB = args["mesh_RGB"]
-  RGBA = (RGB[0], RGB[1], RGB[2], 1)
-  meshColor = colorObj(RGBA, 0.5, 1.0, 1.0, 0.0, 2.0)
-  setMat_plastic(mesh, meshColor)
-
   ## set invisible plane (shadow catcher)
-  invisibleGround(shadowBrightness=0.9)
+  # invisibleGround(shadowBrightness=0.9)
 
   ## set camera 
   camLocation = (3, 0, 2)

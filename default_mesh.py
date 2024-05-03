@@ -11,13 +11,13 @@ RENDER A MESH STEP-BY-STEP:
 '''
 
 arguments = {
-  "output_path": "./default_mesh.png",
+  "output_path": "hair_mesh.png",
   "image_resolution": [720, 720], # recommend >1080 for paper figures
-  "number_of_samples": 200, # recommend >200 for paper figures
-  "mesh_path": "./meshes/spot.ply", # either .ply or .obj
-  "mesh_position": (1.12, -0.14, 0), # UI: click mesh > Transform > Location
-  "mesh_rotation": (90, 0, 227), # UI: click mesh > Transform > Rotation
-  "mesh_scale": (1.5,1.5,1.5), # UI: click mesh > Transform > Scale
+  "number_of_samples": 100, # recommend >200 for paper figures
+  "mesh_path": "mesh.obj", # either .ply or .obj
+  "mesh_position": (-0.75, 0, 0.44), # UI: click mesh > Transform > Location
+  "mesh_rotation": (103, 1, 256), # UI: click mesh > Transform > Rotation
+  "mesh_scale": (0.86,0.86,0.86), # UI: click mesh > Transform > Scale
   "shading": "smooth", # either "flat" or "smooth"
   "subdivision_iteration": 0, # integer
   "mesh_RGB": [144.0/255, 210.0/255, 236.0/255], # mesh RGB
